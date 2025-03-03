@@ -3,7 +3,7 @@ title: "Lab 3: COVID-19"
 subtitle: 'Ecosystem Science and Sustainability 330'
 author: 
   - name: ninahayf.github.io
-  - email: ninahayf@colostate.edu
+  - email: "ninahayf@colostate.edu"
 format: html
 ---
 
