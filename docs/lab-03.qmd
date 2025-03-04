@@ -6,26 +6,28 @@ author:
   - email: "ninahayf@colostate.edu"
 format: html
 ---
-
+# Question 1: Public Data 
 ```{r setup, include=FALSE}
 library(tidyverse)
 library(flextable)
 library(zoo)
 library(lubridate)
+library(patchwork)
 ```
 
-# Load Data
+# Question 2: Daily Summary
+## Load Data
 ```{r}
-data <- read_csv('https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties.csv')
+data_url <- 'https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties.csv'
+data <- read_csv(data_url, show_col_types = FALSE) %>%
+  mutate(date = as.Date(date))
 ```
-
-# Define Parameters 
+## Define Parameters 
 ```{r}
 my.date <- as.Date("2022-02-01")
 my.state <- "Colorado"
 ```
-
-# Filter and Process Data 
+## Filter and Process Data 
 ```{r}
 co_data <- data %>%
   filter(state == my.state) %>%
@@ -34,8 +36,7 @@ co_data <- data %>%
   mutate(new_cases = cases - lag(cases, default = 0), new_deaths = deaths - lag(deaths, default = 0)) %>%
   ungroup()
 ```
-
-# Generate Summary Tables
+## Generate Summary Tables
 ```{r}
 top_cumulative <- co_data %>%
   filter(date == my.date) %>%
@@ -54,7 +55,8 @@ flextable(top_new) %>%
   set_caption("Top 5 Counties by New Cases")
 ```
 
-# Load Population Data 
+# Question 3: Normalizing Data
+## Load Population Data 
 ```{r}
 pop_url <- 'https://www2.census.gov/programs-surveys/popest/datasets/2020-2023/counties/totals/co-est2023-alldata.csv'
 pop_data <- read_csv(pop_url, show_col_types = FALSE)
@@ -75,8 +77,7 @@ if("STATE" %in% colnames(pop_data) & "COUNTY" %in% colnames(pop_data)) {
 pop_data <- pop_data %>%
   mutate(FIPS = as.character(FIPS))
 ```
-
-# Merge COVID and Population Data 
+## Merge COVID and Population Data 
 ```{r}
 co_data <- co_data %>%
   mutate(fips = as.character(fips))
@@ -88,7 +89,7 @@ merged_data <- co_data %>%
   mutate(per_capita_cases = cases / get(pop_col), per_capita_new_cases = new_cases / get(pop_col))
 ```
 
-# Rolling 14-day Analysis
+# Question 4: Rolling Thresholds
 ```{r}
 rolling_14 <- merged_data %>%
   filter(date >= my.date - 13 & date <= my.date) %>%
@@ -97,7 +98,10 @@ rolling_14 <- merged_data %>%
   arrange(desc(per_100k))
 ```
 
-# Visualization for Multi-State Analysis
+# Question 5: Death Toll Analysis
+
+
+# Question 6: Multi-State Analysis 
 ```{r}
 states <- c("New York", "Colorado", "Alabama", "Ohio")
 state_data <- data %>%
@@ -111,12 +115,54 @@ ggplot(state_data, aes(x = date, y = rolling_avg, color = state)) +
   labs(title = "7-day Rolling Average of New Cases", y = "New Cases", x = "Date")
 ```
 
-# Spatial Analysis (Weighted Mean Center)
+# Question 7: Spatial Analysis 
 ```{r}
+centroids_url <- 'https://raw.githubusercontent.com/mikejohnson51/csu-ess-330/refs/heads/main/resources/county-centroids.csv'
+centroids <- read_csv(centroids_url, show_col_types = FALSE)
 
+spatial_data <- merged_data %>%
+  left_join(centroids, by = c("fips" = "fips")) %>%
+  group_by(date) %>%
+  summarize(weighted_lon = sum(LON * cases, na.rm = TRUE) / sum(cases, na.rm = TRUE), weighted_lat = sum(LAT * cases, na.rm = TRUE) / sum(cases, na.rm = TRUE), .groups = "drop")
+
+ggplot() +
+  borders("state", fill = "gray90", colour = "white") +
+  geom_point(data = spatial_data, aes(x = weighted_lon, y = weighted_lat, color = date), size = 2) +
+  labs(title = "COVID-19 Weighted Mean Center Over Time")
 ```
 
+# Question 8: Extra Credit: Cases vs. Deaths
+```{r}
+centroids <- read_csv(centroids_url, show_col_types = FALSE)
 
+spatial_cases <- merged_data %>%
+  left_join(centroids, by = c("fips" = "fips")) %>%
+  group_by(date) %>%
+  summarize(weighted_lon = sum(LON * cases, na.rm = TRUE) / sum(cases, na.rm = TRUE),
+            weighted_lat = sum(LAT * cases, na.rm = TRUE) / sum(cases, na.rm = TRUE), .groups = "drop") %>%
+  drop_na(weighted_lon, weighted_lat)
+
+spatial_deaths <- merged_data %>%
+  left_join(centroids, by = c("fips" = "fips")) %>%
+  group_by(date) %>%
+  summarize(weighted_lon = sum(LON * deaths, na.rm = TRUE) / sum(deaths, na.rm = TRUE),
+            weighted_lat = sum(LAT * deaths, na.rm = TRUE) / sum(deaths, na.rm = TRUE), .groups = "drop") %>%
+  drop_na(weighted_lon, weighted_lat)
+
+cases_plot <- ggplot() +
+  borders("state", fill = "gray90", colour = "white") +
+  geom_point(data = spatial_cases, aes(x = weighted_lon, y = weighted_lat, color = date), size = 2) +
+  scale_color_gradient(low = "pink", high = "red") +
+  labs(title = "COVID-19 Weighted Mean Center (Cases)")
+
+deaths_plot <- ggplot() +
+  borders("state", fill = "gray90", colour = "white") +
+  geom_point(data = spatial_deaths, aes(x = weighted_lon, y = weighted_lat, color = date), size = 2) +
+  scale_color_gradient(low = "lightblue", high = "navy") +
+  labs(title = "COVID-19 Weighted Mean Center (Deaths)")
+
+cases_plot | deaths_plot
+```
 
 
 
