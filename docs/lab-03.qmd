@@ -90,6 +90,36 @@ merged_data <- co_data %>%
 
 # Rolling 14-day Analysis
 ```{r}
+rolling_14 <- merged_data %>%
+  filter(date >= my.date - 13 & date <= my.date) %>%
+  group_by(county) %>%
+  summarize(total_new_cases = sum(new_cases, na.rm = TRUE), per_100k = (total_new_cases / first(get(pop_col))) * 100000, .groups = "drop") %>%
+  arrange(desc(per_100k))
+```
+
+# Visualization for Multi-State Analysis
+```{r}
+states <- c("New York", "Colorado", "Alabama", "Ohio")
+state_data <- data %>%
+  filter(state %in% states) %>%
+  group_by(state, date) %>%
+  summarize(new_cases = sum(cases - lag(cases, default = 0), na.rm = TRUE), .groups = "drop") %>%
+  mutate(rolling_avg = rollmean(new_cases, 7, fill = NA))
+
+ggplot(state_data, aes(x = date, y = rolling_avg, color = state)) +
+  geom_line() +
+  labs(title = "7-day Rolling Average of New Cases", y = "New Cases", x = "Date")
+```
+
+# Spatial Analysis (Weighted Mean Center)
+```{r}
 
 ```
+
+
+
+
+
+
+
 
