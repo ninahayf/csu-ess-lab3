@@ -71,4 +71,25 @@ if("STATE" %in% colnames(pop_data) & "COUNTY" %in% colnames(pop_data)) {
 } else {
   stop("Error: STATE or COUNTY column not found in population data.")
 }
+
+pop_data <- pop_data %>%
+  mutate(FIPS = as.character(FIPS))
 ```
+
+# Merge COVID and Population Data 
+```{r}
+co_data <- co_data %>%
+  mutate(fips = as.character(fips))
+
+pop_col <- names(pop_data)[grepl("2021", names(pop_data))][1]
+
+merged_data <- co_data %>%
+  left_join(pop_data, by = c("fips" = "FIPS")) %>%
+  mutate(per_capita_cases = cases / get(pop_col), per_capita_new_cases = new_cases / get(pop_col))
+```
+
+# Rolling 14-day Analysis
+```{r}
+
+```
+
