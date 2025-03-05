@@ -96,122 +96,49 @@ rolling_14 <- merged_data %>%
   group_by(county) %>%
   summarize(total_new_cases = sum(new_cases, na.rm = TRUE), per_100k = (total_new_cases / first(get(pop_col))) * 100000, .groups = "drop") %>%
   arrange(desc(per_100k))
+
+top_5_rolling <- rolling_14 %>%
+  head(5) %>%
+  flextable() %>%
+  set_caption("Top 5 Counties with Most New Cases in Last 14 Days per 100k")
+
+top_5_rolling
 ```
 
 # Question 5: Death Toll Analysis
-```{r}
----
-title: "COVID-19 Data Analysis"
-subtitle: "Public Health and Policy Insights"
-author:
-  - name: "Your Name"
-    email: "your.email@example.com"
-format: html
----
-
-```{r setup, include=FALSE}
-library(tidyverse)
-library(flextable)
-library(zoo)
-library(lubridate)
-library(patchwork)
-```
-
-# Question 1: Public Data
-```{r}
-# Reflection on the importance of open data
-```
-
-# Question 2: Daily Summary
-## Load Data
-```{r}
-data <- read_csv('https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties.csv')
-```
-
-## Define Parameters
-```{r}
-my.date <- as.Date("2022-02-01")
-my.state <- "Colorado"
-```
-
-## Filter and Process Data
 ```{r}
 co_data <- data %>%
   filter(state == my.state) %>%
   group_by(county) %>%
   arrange(date) %>%
-  mutate(new_cases = cases - lag(cases, default = 0),
-         new_deaths = deaths - lag(deaths, default = 0)) %>%
+  mutate(new_deaths = deaths - lag(deaths, default = 0)) %>%
   ungroup()
-```
-
-## Generate Summary Tables
-```{r}
-top_cumulative <- co_data %>%
-  filter(date == my.date) %>%
-  arrange(desc(cases)) %>%
-  head(5)
-
-flextable(top_cumulative) %>%
-  set_caption("Top 5 Counties by Cumulative Cases")
-
-top_new <- co_data %>%
-  filter(date == my.date) %>%
-  arrange(desc(new_cases)) %>%
-  head(5)
-
-flextable(top_new) %>%
-  set_caption("Top 5 Counties by New Cases")
-```
-
-# Question 3: Normalizing Data
-## Load Population Data
-```{r}
-pop_url <- 'https://www2.census.gov/programs-surveys/popest/datasets/2020-2023/counties/totals/co-est2023-alldata.csv'
-pop_data <- read_csv(pop_url, show_col_types = FALSE)
 
 pop_data <- pop_data %>%
-  rename_with(~ gsub(" ", "_", .x)) %>%
-  mutate(FIPS = sprintf("%02d%03d", as.numeric(STATE), as.numeric(COUNTY))) %>%
-  select(matches("NAME|2021"), FIPS)
-```
-
-## Merge COVID and Population Data
-```{r}
-co_data <- co_data %>% mutate(fips = as.character(fips))
+  mutate(FIPS = as.character(FIPS)) %>%
+  select(FIPS, CTYNAME, DEATHS2021)
 
 merged_data <- co_data %>%
   left_join(pop_data, by = c("fips" = "FIPS")) %>%
-  mutate(per_capita_cases = cases / get(names(pop_data)[grepl("2021", names(pop_data))]),
-         per_capita_new_cases = new_cases / get(names(pop_data)[grepl("2021", names(pop_data))]))
-```
-
-# Question 5: Death Toll Analysis
-```{r}
-covid_2021 <- merged_data %>%
   filter(year(date) == 2021)
 
-covid_deaths_2021 <- covid_2021 %>%
+county_deaths <- merged_data %>%
   group_by(county) %>%
-  summarize(total_covid_deaths = sum(new_deaths, na.rm = TRUE), .groups = "drop")
+  summarize(total_covid_deaths = sum(new_deaths, na.rm = TRUE),
+            total_deaths_2021 = first(`DEATHS2021`), .groups = 'drop') %>%
+  mutate(covid_death_percentage = total_covid_deaths / total_deaths_2021 * 100)
 
-pop_data <- pop_data %>%
-  rename(total_deaths_2021 = matches("DEATHS_2021"))
+high_covid_deaths <- county_deaths %>%
+  filter(covid_death_percentage >= 20)
 
-death_analysis <- covid_deaths_2021 %>%
-  left_join(pop_data, by = "fips") %>%
-  mutate(death_percentage = (total_covid_deaths / total_deaths_2021) * 100) %>%
-  filter(death_percentage >= 20)
+high_covid_deaths
 
-covid_death_plot <- ggplot(death_analysis, aes(x = reorder(county, -death_percentage), y = death_percentage)) +
-  geom_col(fill = "red") +
+ggplot(high_covid_deaths, aes(x = reorder(county, -covid_death_percentage), y = covid_death_percentage)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
   coord_flip() +
-  labs(title = "Counties where COVID-19 Deaths Accounted for 20%+ of Total Deaths in 2021",
-       x = "County",
-       y = "Percentage of Deaths from COVID") +
+  labs(title = "Counties in Colorado with COVID Deaths >= 20% of Annual Death Toll",
+       x = "County", y = "Percentage of Deaths Attributed to COVID (%)") +
   theme_minimal()
-
-covid_death_plot
 ```
 
 # Question 6: Multi-State Analysis 
@@ -222,6 +149,9 @@ state_data <- data %>%
   group_by(state, date) %>%
   summarize(new_cases = sum(cases - lag(cases, default = 0), na.rm = TRUE), .groups = "drop") %>%
   mutate(rolling_avg = rollmean(new_cases, 7, fill = NA))
+
+state_data <- state_data %>%
+  filter(!is.na(rolling_avg))
 
 ggplot(state_data, aes(x = date, y = rolling_avg, color = state)) +
   geom_line() +
