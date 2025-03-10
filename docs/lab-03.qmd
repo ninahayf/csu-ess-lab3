@@ -1,13 +1,13 @@
 
 ---
 title: "Lab 3: COVID-19"
-subtitle: 'Ecosystem Science and Sustainability 330'
+subtitle: "Ecosystem Science and Sustainability 330"
 author: 
-  - name: "ninahayf.github.io"
+  - name: "Nina Hayford"
     email: "ninahayf@colostate.edu"
 format:
-  html: 
-  self-contained: true
+  html:
+    self-contained: true
 ---
 
 # Question 1: Public Data 
@@ -102,7 +102,7 @@ top_cumulative_cases <- filtered_data %>%
   slice_head(n = 5) %>%  # Select top 5 counties
   select(county, cases, deaths)  # Keep relevant columns
 
-# Fortmat Table 1
+# Format Table 1
 table1 <- flextable(top_cumulative_cases) %>%
   set_caption("Top 5 Colorado Counties by Cumulative COVID-19 Cases (as of {my.date})") %>%
   colformat_int(j = c("cases", "deaths"), big.mark = ",") %>%
@@ -129,7 +129,7 @@ table2
 
 Step 1:
 
-```{r load-population-data, messgae=FALSE, warning=FALSE}
+```{r load-population-data, message=FALSE, warning=FALSE}
 # Load necessary libraries 
 library(dplyr)
 library(readr)
@@ -156,7 +156,7 @@ glimpse(population_data)
 
 Step 2:
 
-```{r population-range, messgae=FALSE, warning=FALSE}
+```{r population-range, message=FALSE, warning=FALSE}
 # Find population range in 2021
 population_range <- range(population_data$POPESTIMATE2021, na.rm = TRUE)
 population_range
@@ -294,7 +294,7 @@ table3 <- top_5_counties %>%
 table3 
 
 # Print the number of counties that meet the watch list condition 
-cat("Numer of counties meeting the watch list condition:", watch_list_count)
+cat("Number of counties meeting the watch list condition:", watch_list_count)
 ```
 
 # Question 5: Death Toll Analysis
