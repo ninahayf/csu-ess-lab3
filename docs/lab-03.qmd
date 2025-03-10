@@ -250,72 +250,148 @@ table2
 
 
 # Question 4: Rolling Thresholds
-```{r}
-rolling_14 <- merged_data %>%
-  filter(date >= my.date - 13 & date <= my.date) %>%
+```{r last-14-days-analysis, message=FALSE, warning=FALSE}
+# Lead necessary libraries 
+library(dplyr)
+library(flextable)
+
+# Get the most recent date in the dataset 
+latest_date <- max(covid_pop_data$date, na.rm = TRUE)
+start_date <- latest_date - 13
+
+# Filter the dataset to include only the last 14 days 
+recent_data <- covid_pop_data %>%
+  filter(date >= start_date & date <= latest_date)
+
+# Summarize total new cases per county over the last 14 days 
+summary_data <- recent_data %>%
   group_by(county) %>%
-  summarize(total_new_cases = sum(new_cases, na.rm = TRUE), per_100k = (total_new_cases / first(get(pop_col))) * 100000, .groups = "drop") %>%
-  arrange(desc(per_100k))
+  summarize(
+    total_new_cases = sum(new_cases, na.rm = TRUE), 
+    population = first(POPESTIMATE2021),
+    .groups = "drop"
+  ) %>%
+  mutate(new_cases_per_100k = (total_new_cases / population) * 100000)
 
-top_5_rolling <- rolling_14 %>%
-  head(5) %>%
+# Get the top 5 counties with highest new cases per 100,000 residents 
+top_5_counties <- summary_data %>%
+  arrange(desc(new_cases_per_100k)) %>%
+  select(county, total_new_cases, new_cases_per_100k) %>%
+  head(5)
+
+# Count the number of counties meeting the watch list condition 
+watch_list_count <- summary_data %>%
+  filter(new_cases_per_100k > 100) %>%
+  nrow()
+
+# Create a formatted table for top 5 counties 
+library(flextable)
+table3 <- top_5_counties %>%
   flextable() %>%
-  set_caption("Top 5 Counties with Most New Cases in Last 14 Days per 100k")
+  set_caption("Top 5 Counties with Most New Cases Per 100,000 Residents in the Last 14 Days")
 
-top_5_rolling
+# Display the table 
+table3 
+
+# Print the number of counties that meet the watch list condition 
+cat("Numer of counties meeting the watch list condition:", watch_list_count)
 ```
 
 # Question 5: Death Toll Analysis
-```{r}
-co_data <- data %>%
-  filter(state == my.state) %>%
+```{r covid-death-percentage, message=FALSE, warning=FALSE}
+# Load necessary libraries 
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+
+# Filter for the year 2021
+covid_deaths_2021 <- co_data %>%
+  filter(year(date) == 2021) %>%
   group_by(county) %>%
-  arrange(date) %>%
-  mutate(new_deaths = deaths - lag(deaths, default = 0)) %>%
-  ungroup()
+  summarize(total_covid_deaths = sum(new_deaths, na.rm = TRUE), .groups = "drop")
 
-pop_data <- pop_data %>%
-  mutate(FIPS = as.character(FIPS)) %>%
-  select(FIPS, CTYNAME, DEATHS2021)
+# Merge with population data to get total deaths for 2021
+death_analysis <- covid_deaths_2021 %>%
+  left_join(select(population_data, county = CTYNAME, DEATHS2021), by = "county") %>%
+  distinct() %>% # Ensure no duplicates after join
+  mutate(covid_death_pct = (total_covid_deaths / DEATHS2021) * 100)
 
-merged_data <- co_data %>%
-  left_join(pop_data, by = c("fips" = "FIPS")) %>%
-  filter(year(date) == 2021)
+# Filter for counties where COVID deaths were 20% or more of total deaths
+high_impact_counties <- death_analysis %>%
+  filter(covid_death_pct >= 20)
 
-county_deaths <- merged_data %>%
-  group_by(county) %>%
-  summarize(total_covid_deaths = sum(new_deaths, na.rm = TRUE),
-            total_deaths_2021 = first(`DEATHS2021`), .groups = 'drop') %>%
-  mutate(covid_death_percentage = total_covid_deaths / total_deaths_2021 * 100)
-
-high_covid_deaths <- county_deaths %>%
-  filter(covid_death_percentage >= 20)
-
-high_covid_deaths
-
-ggplot(high_covid_deaths, aes(x = reorder(county, -covid_death_percentage), y = covid_death_percentage)) +
-  geom_bar(stat = "identity", fill = "skyblue") +
+# Plot the results 
+ggplot(high_impact_counties, aes(x = reorder(county, covid_death_pct), y = covid_death_pct)) +
+  geom_bar(stat = "identity", fill = "red") +
   coord_flip() +
-  labs(title = "Counties in Colorado with COVID Deaths >= 20% of Annual Death Toll",
-       x = "County", y = "Percentage of Deaths Attributed to COVID (%)") +
+  labs(title = "Counties Where COVID Deaths were >20% of Total Deaths (2021)",
+       x = "County",
+       y = "Percentage of Deaths from COVID-19") +
   theme_minimal()
+
+# Display the filtered dataset
+high_impact_counties
 ```
 
 # Question 6: Multi-State Analysis 
-```{r}
-states <- c("New York", "Colorado", "Alabama", "Ohio")
-state_data <- data %>%
-  filter(state %in% states) %>%
+```{r state-level-analysis, message=FALSE, warning=FALSE}
+# Load in necessary libraries 
+library(dplyr)
+library(ggplot2)
+library(zoo)
+
+# Define the states of interest
+selected_states <- c("New York", "Colorado", "Alabama", "Ohio")
+
+# Aggregate COVID data to the state level
+state_data <- co_data %>%
   group_by(state, date) %>%
-  summarize(new_cases = sum(cases - lag(cases, default = 0), na.rm = TRUE), .groups = "drop") %>%
-  mutate(rolling_avg = rollmean(new_cases, 7, fill = NA))
+  summarize(daily_new_cases = sum(new_cases, na.rm = TRUE), .groups = "drop") %>%
+  filter(state %in% selected_states) %>%
+  arrange(state, date)
 
+# Compute the 7-day rolling mean 
 state_data <- state_data %>%
-  filter(!is.na(rolling_avg))
+  group_by(state) %>%
+  mutate(rolling_avg = rollmean(daily_new_cases, k = 7, fill = NA, align = "right"))
 
-ggplot(state_data, aes(x = date, y = rolling_avg, color = state)) +
-  geom_line() +
-  labs(title = "7-day Rolling Average of New Cases", y = "New Cases", x = "Date")
+# Faceted bar plot for raw daily cases
+ggplot(state_data, aes(x = date, y = daily_new_cases, fill = state)) +
+  geom_col() +
+  geom_line(aes(y = rolling_avg, color = state), size = 1) +
+  facet_wrap(~ state, scales = "free_y") +
+  labs(title = "Daily New COVID Cases & 7-Day Rolling Average",
+       subtitle = "Comparing New York, Colorado, Alabama, and Ohio",
+       x = "Date",
+       y = "New Cases",
+       fill = "State",
+       color = "7-Day Rolling Avg") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+# Join with state population data to calculate per capita rates 
+state_pop <- covid_pop_data %>%
+  select(state, POPESTIMATE2021) %>%
+  distinct()
+
+state_data_per_capita <- state_data %>%
+  left_join(state_pop, by = "state") %>%
+  mutate(cases_per_100k = (daily_new_cases / POPESTIMATE2021) * 100000,
+         rolling_avg_per_100k = rollmean(cases_per_100k, k = 7, fill = NA, align = "right"))
+
+# Line plot for 7-day rolling per capita cases
+ggplot(state_data_per_capita, aes(x = date, y = rolling_avg_per_100k, color = state)) +
+  geom_line(size = 1.2) +
+  labs(title = "7-Day Rolling Average of COVID Cases Per 100,000 People",
+       subtitle = "Scaling by population allows fairer comparison",
+       x = "Date",
+       y = "New Cases per 100k",
+       color = "State") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+# Display the processed per capita data
+state_data_per_capita
 ```
 
 # Question 7: Spatial Analysis 
