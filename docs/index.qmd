@@ -1,0 +1,10 @@
+---
+title: "ESS 330 Labs"
+format: html
+---
+
+# Welcome to my ESS 330 Labs 
+
+[Go to Lab 3](lab-03.html)
+
+

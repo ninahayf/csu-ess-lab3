@@ -1,93 +1,253 @@
+
 ---
 title: "Lab 3: COVID-19"
 subtitle: 'Ecosystem Science and Sustainability 330'
 author: 
   - name: "ninahayf.github.io"
-  - email: "ninahayf@colostate.edu"
-format: html
+    email: "ninahayf@colostate.edu"
+format:
+  html: 
+  self-contained: true
 ---
+
 # Question 1: Public Data 
-```{r setup, include=FALSE}
-library(tidyverse)
-library(flextable)
-library(zoo)
-library(lubridate)
-library(patchwork)
-```
+
+-   How does easy access to historical and real-time environmental data shape our understanding of climate trends, resource management, and public health?
+
+This easy access can help us view changes between historical and current climate trends. It can help us look back to see where we went wrong and where we went right. We can also use previous data to help predict future issues or trends
+
+-   What happens when this data disappears or becomes inaccessible?
+
+Losing this data could cause us to be unaware of what has already happened and make it extremely difficult to recognize trends and predict future climate and resource conflicts. 
 
 # Question 2: Daily Summary
-## Load Data
+
+Step 1:
+
+```{r setup, include=FALSE, message=FALSE, warning=FALSE}
+# Install required packages if not already installed
+required_packages <- c("tidyverse", "flextable", "zoo")
+new_packages <- required_packages[!(required_packages %in% installed.packages()[,"Package"])]
+
+if (length(new_packages) > 0) {
+  install.packages(new_packages)
+}
+
+# Load libraries
+library(tidyverse) # Data wrangling and visualization
+library(flextable) # Make nice tables
+library(zoo)       # Rolling averages
+```
+
 ```{r}
+library(tidyverse); library(flextable)
 data_url <- 'https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties.csv'
 data <- read_csv(data_url, show_col_types = FALSE) %>%
   mutate(date = as.Date(date))
 ```
-## Define Parameters 
+
 ```{r}
+glimpse(data) # Quick look at the structure 
+head(data)    # View the first few rows 
+dim(data)     # See number of rows and columns
+```
+
+Step 2: 
+
+```{r}
+# Create a date object
 my.date <- as.Date("2022-02-01")
+
+#Create a character object for the state
 my.state <- "Colorado"
+
+# Check their types 
+class(my.date)  # Should return "Date"
+class(my.state) # Should return "character"
 ```
-## Filter and Process Data 
-```{r}
+
+Step 3:
+
+```{r data-processing, message=FALSE, warning=FALSE}
+library(dplyr)
+
+# Filter the dataset to only include Colorado
 co_data <- data %>%
-  filter(state == my.state) %>%
-  group_by(county) %>%
-  arrange(date) %>%
-  mutate(new_cases = cases - lag(cases, default = 0), new_deaths = deaths - lag(deaths, default = 0)) %>%
-  ungroup()
+  filter(state == "Colorado") %>%
+  arrange(county, date) %>% # Ensure data is ordered correctly
+  group_by(county) %>%  # Group by county to calculate changes within each county
+  mutate(
+    new_cases = cases - lag(cases, default = 0),  # Compute daily new cases
+    new_deaths = deaths - lag(deaths, default = 0) # Compute daily new deaths
+) %>%
+  ungroup() # Remove grouping to avoid unintended side effects 
+
+# View the first few rows
+head(co_data)
 ```
-## Generate Summary Tables
-```{r}
-top_cumulative <- co_data %>%
-  filter(date == my.date) %>%
-  arrange(desc(cases)) %>%
-  head(5)
 
-flextable(top_cumulative) %>%
-  set_caption("Top 5 Counties by Cumulative Cases")
+Step 4:
 
-top_new <- co_data %>%
-  filter(date == my.date) %>%
-  arrange(desc(new_cases)) %>%
-  head(5)
+```{r tables, message=FALSE, warning=FALSE}
+library(dplyr)
+library(flextable)  # For formatting tables
 
-flextable(top_new) %>%
-  set_caption("Top 5 Counties by New Cases")
+# Filter data for the selected date
+filtered_data <- co_data %>%
+  filter(date == my.date)
+
+# Table 1: Top 5 Counties with the Most Cumulative Cases
+top_cumulative_cases <- filtered_data %>%
+  arrange(desc(cases)) %>%  # Sort in descending order
+  slice_head(n = 5) %>%  # Select top 5 counties
+  select(county, cases, deaths)  # Keep relevant columns
+
+# Fortmat Table 1
+table1 <- flextable(top_cumulative_cases) %>%
+  set_caption("Top 5 Colorado Counties by Cumulative COVID-19 Cases (as of {my.date})") %>%
+  colformat_int(j = c("cases", "deaths"), big.mark = ",") %>%
+  autofit()
+
+# Table 2: Top 5 Counties with the Most New Cases 
+top_new_cases <- filtered_data %>%
+  arrange(desc(new_cases)) %>%  # Sort in descending order 
+  slice_head(n = 5) %>%  # Select top 5 counties
+  select(county, new_cases, new_deaths)  # Keep relevant columns
+
+# Fortmat Table 2
+table2 <- flextable(top_new_cases) %>%
+  set_caption("Top 5 Colorado Counties by New COVID-19 Cases (as of {my.date})") %>%
+  colformat_int(j = c("new_cases", "new_deaths"), big.mark = ",") %>%
+  autofit()
+
+# Print tables
+table1
+table2
 ```
 
 # Question 3: Normalizing Data
-## Load Population Data 
-```{r}
+
+Step 1:
+
+```{r load-population-data, messgae=FALSE, warning=FALSE}
+# Load necessary libraries 
+library(dplyr)
+library(readr)
+
+# Read population data from Census website-
 pop_url <- 'https://www2.census.gov/programs-surveys/popest/datasets/2020-2023/counties/totals/co-est2023-alldata.csv'
-pop_data <- read_csv(pop_url, show_col_types = FALSE)
+population_data <- read_csv(pop_url, show_col_types = FALSE)
 
-pop_data <- pop_data %>%
-  rename_with(~ gsub(" ", "_", .x))
+# Check column names to conform correct naming
+colnames(population_data)
 
-if("STATE" %in% colnames(pop_data) & "COUNTY" %in% colnames(pop_data)) {
-  pop_data <- pop_data %>%
-    mutate(STATE = str_pad(as.character(STATE), width = 2, side = "left", pad = "0"),
-           COUNTY = str_pad(as.character(COUNTY), width = 3, side = "left", pad = "0"),
-           FIPS = paste0(STATE, COUNTY)) %>%
-    select(matches("NAME|2021"), FIPS)
-} else {
-  stop("Error: STATE or COUNTY column not found in population data.")
+# Ensure STATE and COUNTY are formatted correctly for merging with COVID data
+population_data <- population_data %>%
+  mutate(STATE = sprintf("%02d", as.numeric(STATE)),  # Convert STATE to 2-digit character
+    COUNTY = sprintf("%03d", as.numeric(COUNTY)), # Convert COUNTY to 3-digit character
+    FIPS = paste0(STATE, COUNTY)  # Create 5-digit FIPS code
+) %>%
+  select(matches("NAME|2021"), FIPS, COUNTY) %>%  # Keep relevant columns
+  filter(COUNTY != "000")  # Remove state-level rows
+
+# Display structure of cleaned data 
+glimpse(population_data)
+```
+
+Step 2:
+
+```{r population-range, messgae=FALSE, warning=FALSE}
+# Find population range in 2021
+population_range <- range(population_data$POPESTIMATE2021, na.rm = TRUE)
+population_range
+```
+
+Step 3:
+
+```{r}
+# Load necessary libraries 
+library(dplyr)
+library(readr)
+
+#Check column names of population_data to verify 'fips' exists
+colnames(population_data)
+
+# Ensure 'fips' column exists in population_data 
+if(!"fips" %in% colnames(population_data)) {
+  # Rename FIPS column (if it exists) to match COVID data 
+  if("FIPS" %in% colnames(population_data)) {
+    population_data <- population_data %>%
+      rename(fips = FIPS)
+  } else {
+    stop("FIPS column not found in population_data")
+  }
 }
 
-pop_data <- pop_data %>%
-  mutate(FIPS = as.character(FIPS))
-```
-## Merge COVID and Population Data 
-```{r}
+# Convert fips to character for proper joining
+population_data <- population_data %>%
+  mutate(fips = as.character(fips))
+
 co_data <- co_data %>%
   mutate(fips = as.character(fips))
 
-pop_col <- names(pop_data)[grepl("2021", names(pop_data))][1]
+# Ensure 'cases' column exists in co_data
+if(!"cases" %in% colnames(co_data)) {
+  stop("Column 'cases' not found in co_data. Check data loading.")
+}
 
-merged_data <- co_data %>%
-  left_join(pop_data, by = c("fips" = "FIPS")) %>%
-  mutate(per_capita_cases = cases / get(pop_col), per_capita_new_cases = new_cases / get(pop_col))
+# Join population data with COVID data 
+covid_pop_data <- co_data %>%
+  left_join(population_data %>% select(fips, POPESTIMATE2021), by = "fips") %>%
+  mutate(
+    per_capita_cases = cases / POPESTIMATE2021, 
+    per_capita_new_cases = new_cases / POPESTIMATE2021,
+    per_capita_new_deaths = new_deaths / POPESTIMATE2021
+  )
+
+# Inspect the joined dataset
+glimpse(covid_pop_data)
+dim(covid_pop_data)
 ```
+Step 4:
+
+```{r filter-top-counties, message=FALSE, warning=FALSE}
+# Load necessary library 
+library(flextable)
+
+covid_pop_data <- covid_pop_data %>%
+  mutate(
+    per_capita_cases = cases / POPESTIMATE2021,
+    per_capita_new_cases = new_cases / POPESTIMATE2021
+  )
+
+# Filter for the date 2021-01-01
+date_filter <- as.Date("2021-01-01")
+
+top_cumulative_per_capita <- covid_pop_data %>%
+  arrange(desc(per_capita_cases)) %>%
+  select(county, cases, per_capita_cases) %>%
+  head(5)
+
+top_new_per_capita <- covid_pop_data %>%
+  filter(date == date_filter) %>%
+  arrange(desc(per_capita_new_cases)) %>%
+  select(county, new_cases, per_capita_new_cases) %>%
+  head(5)
+  
+# Convert tables to nice format using flextables 
+table1 <- top_cumulative_per_capita %>%
+  flextable() %>%
+  set_caption("Top 5 Counties with Most Cumulative Cases Per Capita on 2021-01-01")
+
+table2 <- top_new_per_capita %>%
+  flextable() %>%
+  set_caption("Top 5 Counties with Most New Cases Per Capita on 2021-01-01")
+
+# Display tables 
+table1
+table2
+```
+
 
 # Question 4: Rolling Thresholds
 ```{r}
