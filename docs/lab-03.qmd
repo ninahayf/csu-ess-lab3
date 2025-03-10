@@ -396,18 +396,68 @@ state_data_per_capita
 
 # Question 7: Spatial Analysis 
 ```{r}
+# Load necessary libraries 
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+library(readr)
+library(maps)
+
+# Read in county centroid data
 centroids_url <- 'https://raw.githubusercontent.com/mikejohnson51/csu-ess-330/refs/heads/main/resources/county-centroids.csv'
-centroids <- read_csv(centroids_url, show_col_types = FALSE)
+county_centroids <- read_csv(centroids_url, show_col_types = FALSE)
 
-spatial_data <- merged_data %>%
-  left_join(centroids, by = c("fips" = "fips")) %>%
+# Read in COVID data 
+covid_data <- read_csv("data/covid_data.csv")
+
+# Verify data loaded correctly
+if (nrow(covid_data) == 0) {
+  stop("Error: The COVID data file is empty. Check your data source.")
+}
+
+# Ensure FIPS codes are character strings for proper merging
+covid_data <- covid_data %>%
+  mutate(fips = as.character(fips))
+
+county_centroids <- county_centroids %>%
+  mutate(fips = as.character(fips))
+
+# Merge COVID-19 data with county centroids
+covid_data <- covid_data %>%
+  filter(!is.na(fips)) %>%
+  left_join(county_centroids, by = "fips") %>%
+  select(date, county, state, fips, cases, deaths, LON, LAT)
+
+# Check column names to confirm
+print(colnames(covid_data))
+
+# Compute the Weighted Mean Center for Each Date
+weighted_mean_center <- covid_data %>%
+  filter(!is.na(LON) & !is.na(LAT) & !is.na(cases)) %>%
   group_by(date) %>%
-  summarize(weighted_lon = sum(LON * cases, na.rm = TRUE) / sum(cases, na.rm = TRUE), weighted_lat = sum(LAT * cases, na.rm = TRUE) / sum(cases, na.rm = TRUE), .groups = "drop")
+  summarize(
+    LON_WMC = sum(LON * cases, na.rm = TRUE) / sum(cases, na.rm = TRUE),
+    LAT_WMC = sum(LAT * cases, na.rm = TRUE) / sum(cases, na.rm = TRUE),
+    total_cases = sum(cases, na.rm = TRUE)
+  ) %>%
+  mutate(month = format(date, "%m")) %>%
+  mutate(month = factpr(month, levels = sprintf("%02d", 1:12))) # Convert month to factor
 
-ggplot() +
+# Plot the Movement of the Weighted Mean Center
+ggplot(weighted_mean_center, aes(x = LON_WMC, y = LAT_WMC, color = month, size = total_cases)) +
   borders("state", fill = "gray90", colour = "white") +
-  geom_point(data = spatial_data, aes(x = weighted_lon, y = weighted_lat, color = date), size = 2) +
-  labs(title = "COVID-19 Weighted Mean Center Over Time")
+  geom_point(alpha = 0.8) +
+  scale_size_continuous(range = c(2, 10)) +
+  scale_color_viridis_d() + # Using a color scale that works well for months 
+  labs(
+    title = "Weighted Mean Center of COVID-19 Cases in the USA",
+    subtitle = "Tracking the spread of the outbreak over time",
+    x = "Longtude"
+    y = "Latitude",
+    color = "Month",
+    size = "Total Cases"
+  ) +
+  theme_minimal()
 ```
 
 # Question 8: Extra Credit: Cases vs. Deaths
